@@ -8,5 +8,5 @@ import (
 
 func main() {
 	col := monresql.Collection{}
-	fmt.Println(col)
+	fmt.Println(" coll :", col)
 }
