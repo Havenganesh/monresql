@@ -20,10 +20,10 @@ const workerCountOverflow = 500
 const workerCount = 5
 
 type replica struct {
-	Config      FieldsMap
+	Config      fieldsMap
 	Output      *sqlx.DB
 	Mongoclient *mongo.Client
-	C           chan DBResult
+	C           chan dbResult
 	done        chan bool
 
 	insertCounter *ratecounter.RateCounter
@@ -47,7 +47,7 @@ func (z *replica) Read(wg1 *sync.WaitGroup) {
 					log.Println("unmarshal bson mongodb error : ", err)
 				} else {
 					z.readCounter.Incr(1)
-					z.C <- DBResult{dbName, name, result}
+					z.C <- dbResult{dbName, name, result}
 					result = make(map[string]interface{})
 				}
 			}
@@ -76,7 +76,7 @@ func (z *replica) writer(tables *cmap.ConcurrentMap, wg1 *sync.WaitGroup) {
 			break
 		}
 		o, coll := z.statementFromDbCollection(e.MongoDB, e.Collection)
-		op := BuildOpFromMgo(o.mongoFields(), e, coll)
+		op := buildOpFromMgo(o.mongoFields(), e, coll)
 		s := o.BuildUpsert()
 		_, err := z.Output.NamedExec(s, op.Data)
 		z.insertCounter.Incr(1)
@@ -92,7 +92,7 @@ func (z *replica) writer(tables *cmap.ConcurrentMap, wg1 *sync.WaitGroup) {
 	wg1.Done()
 }
 
-func (z *replica) statementFromDbCollection(db string, collectionName string) (statement, Collection) {
+func (z *replica) statementFromDbCollection(db string, collectionName string) (statement, coll) {
 	c := z.Config[db].Collections[collectionName]
 	return statement{c}, c
 }
@@ -108,27 +108,27 @@ func (z *replica) buildTables() (tables cmap.ConcurrentMap) {
 	return
 }
 
-func BuildOpFromMgo(mongoFields []string, e DBResult, coll Collection) *gtm.Op {
+func buildOpFromMgo(mongoFields []string, e dbResult, coll coll) *gtm.Op {
 	var op gtm.Op
 	op.Data = e.Data
-	opRef := EnsureOpHasAllFields(&op, mongoFields)
+	opRef := ensureOpHasAllFields(&op, mongoFields)
 	opRef.Id = e.Data["_id"]
 	// Set to I so we are consistent about these beings inserts
 	// This avoids our guardclause in sanitize
 	opRef.Operation = "i"
-	data := FullSynSanitizeData(coll.Fields, opRef)
+	data := sanitizeData(coll.Fields, opRef)
 	opRef.Data = data
 	return opRef
 }
 
-func newReplicater(config FieldsMap, pg *sqlx.DB, mongo *mongo.Client, syncname string) replica {
-	c := make(chan DBResult)
+func newReplicater(config fieldsMap, pg *sqlx.DB, mongo *mongo.Client, replicaName string) replica {
+	c := make(chan dbResult)
 	insertCounter := ratecounter.NewRateCounter(1 * time.Second)
 	readCounter := ratecounter.NewRateCounter(1 * time.Second)
 	time := fmt.Sprint(time.Now())
-	insert := "insert/sec " + syncname + time
-	read := "read/sec " + syncname + time
-	log.Info("inserted value :", insert, read, syncname)
+	insert := "insert/sec " + replicaName + time
+	read := "read/sec " + replicaName + time
+	log.Info("inserted value :", insert, read, replicaName)
 	expvar.Publish(insert, insertCounter)
 	expvar.Publish(read, readCounter)
 	done := make(chan bool, 2)
@@ -136,17 +136,17 @@ func newReplicater(config FieldsMap, pg *sqlx.DB, mongo *mongo.Client, syncname 
 	return sync
 }
 
-func Replicate(config FieldsMap, pg *sqlx.DB, mongo *mongo.Client, syncname string) string {
+func Replicate(config fieldsMap, pg *sqlx.DB, mongo *mongo.Client, replicaName string) string {
 	var wg1 sync.WaitGroup
-	sync1 := newReplicater(config, pg, mongo, syncname)
+	sync1 := newReplicater(config, pg, mongo, replicaName)
 	t := time.Now()
 	wg1.Add(2)
-	log.Println("Starting writer : " + syncname)
+	log.Println("Starting writer : " + replicaName)
 	go sync1.Write(&wg1)
-	log.Println("Starting reader : " + syncname)
+	log.Println("Starting reader : " + replicaName)
 	go sync1.Read(&wg1)
 	wg1.Wait()
-	log.Info("===============================Full Sync Completed For : ", syncname, " Duration : ", time.Since(t))
+	log.Info("===============================Full Sync Completed For : ", replicaName, " Duration : ", time.Since(t))
 	defer pg.Close()
 	defer mongo.Disconnect(context.Background())
 	return "Replication Completed"

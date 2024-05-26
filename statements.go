@@ -9,7 +9,7 @@ import (
 // statement provides functions for building up upsert/insert/update/allowDeletes
 // sql commands appropriate for a gtm.Op.Data
 type statement struct {
-	Collection Collection
+	Collection coll
 }
 
 func (o *statement) prefixColon(s string) string {
@@ -92,7 +92,7 @@ func (o *statement) sortedKeys() []string {
 	return keys
 }
 
-func (o *statement) id() Field {
+func (o *statement) id() field {
 	return o.Collection.Fields["_id"]
 }
 

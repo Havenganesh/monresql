@@ -25,17 +25,16 @@ import (
 // Tailer is the core struct for performing
 // Mongo->Pg streaming.
 type syncronizer struct {
-	id           string
+	syncName     string
 	pg           *sqlx.DB
 	mgoClient    *mongo.Client
 	counters     counters
 	stopC        chan bool
 	fan          map[string]gtm.OpChan
 	checkpoint   *cmap.ConcurrentMap
-	syncName     string
 	retryCount   int
 	psqluserName string
-	config       FieldsMap
+	fieldMap     fieldsMap
 	setting      settings
 }
 type settings struct {
@@ -53,7 +52,7 @@ var (
 // when using Suture library
 func (t *syncronizer) serve() {
 	ctx, cancel := context.WithCancel(context.Background())
-	ctxCancelFuncMap[t.id] = cancel
+	ctxCancelFuncMap[t.syncName] = cancel
 	t.write(ctx)
 	t.read(ctx)
 	t.report(ctx)
@@ -65,7 +64,7 @@ func (t *syncronizer) serve() {
 // Stop is the func necessary to terminate action
 // when using Suture library
 func (t *syncronizer) stop() {
-	cancel := ctxCancelFuncMap[t.id]
+	cancel := ctxCancelFuncMap[t.syncName]
 	cancel()
 	t.pg.Close()
 	t.mgoClient.Disconnect(context.Background())
@@ -77,6 +76,7 @@ func (t *syncronizer) startOverflowConsumers(c <-chan *gtm.Op, ctx context.Conte
 		go t.consumer(c, nil, ctx)
 	}
 }
+
 func (t *syncronizer) opFilter(op *gtm.Op) bool {
 	val := op.Data["_id"]
 	log.Println("op values : ", op.Operation, op.Namespace)
@@ -98,7 +98,7 @@ func (t *syncronizer) opFilter(op *gtm.Op) bool {
 func (t *syncronizer) newFan() map[string]gtm.OpChan {
 	fan := make(map[string]gtm.OpChan)
 	// Register Channels
-	for dbName, db := range t.config {
+	for dbName, db := range t.fieldMap {
 		for collectionName := range db.Collections {
 			fan[createFanKey(dbName, collectionName)] = make(gtm.OpChan, 1000)
 		}
@@ -106,7 +106,7 @@ func (t *syncronizer) newFan() map[string]gtm.OpChan {
 	return fan
 }
 
-func (t *syncronizer) newOptions(timestamp EpochTimestamp, replayDuration time.Duration) (*gtm.Options, error) {
+func (t *syncronizer) newOptions(timestamp epochTimestamp, replayDuration time.Duration) (*gtm.Options, error) {
 	options := gtm.DefaultOptions()
 	// options.Filter = t.OpFilter
 	after := buildOptionAfterFromTimestamp(timestamp, replayDuration)
@@ -149,10 +149,10 @@ func (t *syncronizer) startDedicatedConsumers(fan map[string]gtm.OpChan, overflo
 	}
 }
 
-type EpochTimestamp int64
+type epochTimestamp int64
 
-func buildOptionAfterFromTimestamp(timestamp EpochTimestamp, replayDuration time.Duration) func(*mongo.Client, *gtm.Options) (primitive.Timestamp, error) {
-	if timestamp != EpochTimestamp(0) && int64(timestamp) < time.Now().Unix() {
+func buildOptionAfterFromTimestamp(timestamp epochTimestamp, replayDuration time.Duration) func(*mongo.Client, *gtm.Options) (primitive.Timestamp, error) {
+	if timestamp != epochTimestamp(0) && int64(timestamp) < time.Now().Unix() {
 		// We have a starting oplog entry
 		f := func() time.Time { return time.Unix(int64(timestamp), 0) }
 		return opTimestampWrapper(f, time.Duration(0))
@@ -189,7 +189,7 @@ func (t *syncronizer) read(ctx context.Context) {
 	} else {
 		lastEpoch = metadata.LastEpoch
 	}
-	options, err := t.newOptions(EpochTimestamp(metadata.LastEpoch), t.setting.replayDuration)
+	options, err := t.newOptions(epochTimestamp(metadata.LastEpoch), t.setting.replayDuration)
 	if err != nil {
 		log.Println(err.Error())
 	}
@@ -210,9 +210,9 @@ func (t *syncronizer) read(ctx context.Context) {
 					close(g.errs)
 					latest, ok := t.checkpoint.Get(t.syncName)
 					if ok && latest != nil {
-						metadata = latest.(MoresqlMetadata)
+						metadata = latest.(monresqlMetadata)
 						lastEpoch = metadata.LastEpoch
-						options, err := t.newOptions(EpochTimestamp(lastEpoch), t.setting.replayDuration)
+						options, err := t.newOptions(epochTimestamp(lastEpoch), t.setting.replayDuration)
 						if err != nil {
 							log.Println(err.Error())
 						}
@@ -224,7 +224,7 @@ func (t *syncronizer) read(ctx context.Context) {
 				} else {
 					log.Printf("Exiting: Mongo tailer returned error %s", err.Error())
 					if t.retryCount == 0 {
-						Stop(t.id)
+						Stop(t.syncName)
 					} else {
 						t.retryCount--
 					}
@@ -241,9 +241,9 @@ func (t *syncronizer) read(ctx context.Context) {
 				coll := op.GetCollection()
 				key := createFanKey(db, coll)
 				if c := t.fan[key]; c != nil {
-					collection := t.config[db].Collections[coll]
+					collection := t.fieldMap[db].Collections[coll]
 					o := statement{collection}
-					c <- EnsureOpHasAllFields(op, o.mongoFields())
+					c <- ensureOpHasAllFields(op, o.mongoFields())
 				} else {
 					t.counters.skipped.Incr(1)
 					log.Debug("Missing channel for this collection")
@@ -283,7 +283,7 @@ func (t *syncronizer) report(ctx context.Context) {
 	}()
 }
 
-func (t *syncronizer) saveCheckpoint(m MoresqlMetadata) error {
+func (t *syncronizer) saveCheckpoint(m monresqlMetadata) error {
 	// log.Println("save check point called")
 	q := queries{}
 	result, err := t.pg.NamedExec(q.SaveMetadata(), m)
@@ -305,7 +305,7 @@ func (t *syncronizer) checkpoints(ctx context.Context) {
 			case <-timer.C:
 				latest, ok := t.checkpoint.Get(t.syncName)
 				if ok && latest != nil {
-					data := latest.(MoresqlMetadata)
+					data := latest.(monresqlMetadata)
 					if epoch != data.LastEpoch {
 						t.saveCheckpoint(data)
 						log.Printf("Checkpoint Saved : \"%s\" epoch : %d", data.AppName, data.LastEpoch)
@@ -343,14 +343,14 @@ func (t *syncronizer) consumer(in <-chan *gtm.Op, overflow chan<- *gtm.Op, ctx c
 	}
 }
 
-func (t *syncronizer) opToMoresqlMetadata(op *gtm.Op) MoresqlMetadata {
+func (t *syncronizer) opToMoresqlMetadata(op *gtm.Op) monresqlMetadata {
 	ts, _ := gtm.ParseTimestamp(op.Timestamp)
-	return MoresqlMetadata{AppName: t.syncName, ProcessedAt: time.Now(), LastEpoch: int64(ts)}
+	return monresqlMetadata{AppName: t.syncName, ProcessedAt: time.Now(), LastEpoch: int64(ts)}
 }
 
 func (t *syncronizer) getMongoDocById(id interface{}) map[string]interface{} {
 	var result map[string]interface{}
-	for dbName, v := range t.config {
+	for dbName, v := range t.fieldMap {
 		db := t.mgoClient.Database(dbName)
 		for name := range v.Collections {
 			coll := db.Collection(name)
@@ -370,12 +370,12 @@ func (t *syncronizer) getMongoDocById(id interface{}) map[string]interface{} {
 func (t *syncronizer) processOp(op *gtm.Op) {
 	collectionName := op.GetCollection()
 	db := op.GetDatabase()
-	st := replica{Config: t.config}
+	st := replica{Config: t.fieldMap}
 	o, c := st.statementFromDbCollection(db, collectionName)
 	if op.IsUpdate() {
 		op.Data = t.getMongoDocById(op.Id)
 	}
-	data, availFields := SanitizeData(c.Fields, op)
+	data := sanitizeData(c.Fields, op)
 
 	switch {
 	case op.IsInsert():
@@ -388,7 +388,7 @@ func (t *syncronizer) processOp(op *gtm.Op) {
 
 	case op.IsUpdate():
 		t.counters.update.Incr(1)
-		updateSQL := o.BuildUpdate(availFields)
+		updateSQL := o.BuildUpsert()
 		_, err := t.pg.NamedExec(updateSQL, data)
 		if err != nil {
 			log.Error(updateSQL, "data : ", data, " tailing update error : ", err)
@@ -420,17 +420,16 @@ func (t *syncronizer) msLag(epoch int32, nowFunc func() time.Time) int64 {
 	return nanoToMillisecond(d)
 }
 
-type MoresqlMetadata struct {
+type monresqlMetadata struct {
 	AppName     string    `db:"app_name"`
 	LastEpoch   int64     `db:"last_epoch"`
 	ProcessedAt time.Time `db:"processed_at"`
 }
 
-func newsyncronizer(config FieldsMap, pg *sqlx.DB, client *mongo.Client, syncName, id string) *syncronizer {
+func newsyncronizer(fieldMap fieldsMap, pg *sqlx.DB, client *mongo.Client, syncName string) *syncronizer {
 	checkpoint := cmap.New()
 	return &syncronizer{
-		id:           id,
-		config:       config,
+		fieldMap:     fieldMap,
 		pg:           pg,
 		mgoClient:    client,
 		stopC:        make(chan bool, 5),
@@ -441,8 +440,8 @@ func newsyncronizer(config FieldsMap, pg *sqlx.DB, client *mongo.Client, syncNam
 		psqluserName: ""}
 }
 
-func fetchMetadata(pg *sqlx.DB, appName, username string) MoresqlMetadata {
-	metadata := MoresqlMetadata{}
+func fetchMetadata(pg *sqlx.DB, appName, username string) monresqlMetadata {
+	metadata := monresqlMetadata{}
 	q := queries{}
 	err := pg.Get(&metadata, q.GetMetadata(), appName)
 	// No rows means this is first time with table
@@ -512,7 +511,7 @@ func opTimestampWrapper(f func() time.Time, ago time.Duration) func(*mongo.Clien
 		now := f()
 		inPast := now.Add(-ago)
 		var c uint32 = 1
-		ts, err := NewPrimitiveTimeStamp(inPast, c) // NewMongoTimestamp(inPast, c)
+		ts, err := newPrimitiveTimeStamp(inPast, c) // NewMongoTimestamp(inPast, c)
 		if err != nil {
 			log.Error(err)
 		}
@@ -520,15 +519,25 @@ func opTimestampWrapper(f func() time.Time, ago time.Duration) func(*mongo.Clien
 	}
 }
 
-func Sync(config FieldsMap, pg *sqlx.DB, client *mongo.Client, syncName, id string) {
-	service := newsyncronizer(config, pg, client, syncName, id)
+func Sync(fieldMap fieldsMap, pg *sqlx.DB, client *mongo.Client, syncName string) {
+	service := newsyncronizer(fieldMap, pg, client, syncName)
 	service.serve()
-	runService[id] = service
+	runService[syncName] = service
 }
 
-func Stop(id string) {
-	service := runService[id]
+func Stop(syncName string) {
+	service := runService[syncName]
 	service.stop()
-	runService[id] = nil
-	ctxCancelFuncMap[id] = nil
+	runService[syncName] = nil
+	ctxCancelFuncMap[syncName] = nil
+}
+
+func ValidatePostgresTable(fieldMap fieldsMap, pg *sqlx.DB) string {
+	cmd := commands{}
+	rsult := cmd.ValidateTablesAndColumns(fieldMap, pg)
+	result := ""
+	for _, str := range rsult {
+		result = result + str
+	}
+	return result
 }

@@ -7,6 +7,7 @@ replace github.com/Havenganesh/monresql => ../../monresql
 require github.com/Havenganesh/monresql v0.0.0-00010101000000-000000000000
 
 require (
+	// github.com/Havenganesh/monresql v0.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/golang/snappy v0.0.3 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect

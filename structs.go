@@ -5,13 +5,13 @@ import (
 	"fmt"
 )
 
-type DBResult struct {
+type dbResult struct {
 	MongoDB    string
 	Collection string
 	Data       map[string]interface{}
 }
 
-type MongoResult struct {
+type mongoResult struct {
 	DB struct {
 		Source      string
 		Destination string
@@ -24,11 +24,11 @@ type urls struct {
 	postgres string
 }
 
-type ColumnResult struct {
+type columnResult struct {
 	Name string `db:"column_name"`
 }
 
-type TableColumn struct {
+type tableColumn struct {
 	Schema   string
 	Table    string
 	Column   string
@@ -37,11 +37,11 @@ type TableColumn struct {
 	Solution string
 }
 
-func (t *TableColumn) uniqueIndex() string {
+func (t *tableColumn) uniqueIndex() string {
 	return fmt.Sprintf("CREATE UNIQUE INDEX %s_service_uindex_on_%s ON %s.%s (%s);", t.Table, t.Column, t.Schema, t.Table, t.Column)
 }
 
-func (t *TableColumn) createColumn() string {
+func (t *tableColumn) createColumn() string {
 	return fmt.Sprintf(`ALTER TABLE %s.%s ADD %s %s NULL;`, t.Schema, t.Table, normalizeDotNotationToPostgresNaming(t.Column), t.Type)
 }
 
@@ -71,48 +71,48 @@ func (p Postgres) nameQuoted() string {
 	return fmt.Sprintf(`"%s"`, p.Name)
 }
 
-type Field struct {
+type field struct {
 	Mongo    Mongo    `json:"mongo"`
 	Postgres Postgres `json:"postgres"`
 }
 type (
-	Fields         map[string]Field
-	FieldShorthand map[string]string
-	FieldsWrapper  map[string]json.RawMessage
+	fields         map[string]field
+	fieldShorthand map[string]string
+	fieldsWrapper  map[string]json.RawMessage
 )
 
-type Collection struct {
+type coll struct {
 	Name    string `json:"name"`
 	PgTable string `json:"pg_table"`
-	Fields  Fields `json:"fields"`
+	Fields  fields `json:"fields"`
 }
 
-func (c Collection) pgTableQuoted() string {
+func (c coll) pgTableQuoted() string {
 	return fmt.Sprintf(`"%s"`, c.PgTable)
 }
 
-type CollectionDelayed struct {
+type collectionDelayed struct {
 	Name    string          `json:"name"`
 	PgTable string          `json:"pg_table"`
 	Fields  json.RawMessage `json:"fields"`
 }
 
-type DBDelayed struct {
-	Collections CollectionsDelayed `json:"collections"`
+type dBDelayed struct {
+	Collections collectionsDelayed `json:"collections"`
 }
-type DB struct {
-	Collections Collections `json:"collections"`
+type dB struct {
+	Collections collections `json:"collections"`
 }
 
 type (
-	Collections        map[string]Collection
-	CollectionsDelayed map[string]CollectionDelayed
+	collections        map[string]coll
+	collectionsDelayed map[string]collectionDelayed
 )
 
 // Mapfile provides the core struct for
 // the ultimate unmarshalled moresql.json
-type FieldsMap map[string]DB
+type fieldsMap map[string]dB
 
 // ConfigDelayed provides lazy config loading
 // to support shorthand and longhand variants
-type ConfigDelayed map[string]DBDelayed
+type configDelayed map[string]dBDelayed

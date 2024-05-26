@@ -16,13 +16,13 @@ func (c *commands) CreateTableSQL() string {
 	return query
 }
 
-func (c *commands) ValidateTablesAndColumns(config FieldsMap, pg *sqlx.DB) []string {
+func (c *commands) ValidateTablesAndColumns(fieldMap fieldsMap, pg *sqlx.DB) []string {
 	var results []string
 	q := queries{}
-	missingColumns := []TableColumn{}
+	missingColumns := []tableColumn{}
 	// Validates configuration of Postgres based on config file
 	// Only validates SELECT and column existance
-	for _, db := range config {
+	for _, db := range fieldMap {
 		for _, coll := range db.Collections {
 			table := coll.PgTable
 			// TODO: allow for non-public schema
@@ -36,7 +36,7 @@ func (c *commands) ValidateTablesAndColumns(config FieldsMap, pg *sqlx.DB) []str
 
 			resultMap := make(map[string]string)
 			for rows.Next() {
-				var row ColumnResult
+				var row columnResult
 				err := rows.StructScan(&row)
 				if err != nil {
 					log.Println(err)
@@ -48,7 +48,7 @@ func (c *commands) ValidateTablesAndColumns(config FieldsMap, pg *sqlx.DB) []str
 				k := field.Postgres.Name
 				_, ok := resultMap[k]
 				if !ok {
-					t := TableColumn{Schema: schema, Table: table, Column: k, Message: "Missing Column", Type: field.Postgres.Type}
+					t := tableColumn{Schema: schema, Table: table, Column: k, Message: "Missing Column", Type: field.Postgres.Type}
 					t.Solution = t.createColumn()
 					missingColumns = append(missingColumns, t)
 				}
@@ -62,7 +62,7 @@ func (c *commands) ValidateTablesAndColumns(config FieldsMap, pg *sqlx.DB) []str
 			}
 
 			if !r.isValid() {
-				t := TableColumn{Schema: schema, Table: table, Column: "_id", Message: "Missing Unique Index on Column", Type: ""}
+				t := tableColumn{Schema: schema, Table: table, Column: "_id", Message: "Missing Unique Index on Column", Type: ""}
 				t.Solution = t.uniqueIndex()
 				missingColumns = append(missingColumns, t)
 			}
@@ -71,7 +71,7 @@ func (c *commands) ValidateTablesAndColumns(config FieldsMap, pg *sqlx.DB) []str
 	}
 	if len(missingColumns) != 0 {
 		log.Print("The following errors were reported:")
-		tables := make(map[string]TableColumn)
+		tables := make(map[string]tableColumn)
 		for _, v := range missingColumns {
 			log.Printf("Table %s.%s Column: %s, Error: %s", v.Schema, v.Table, v.Column, v.Message)
 			tables[v.Table] = v
@@ -90,7 +90,6 @@ func (c *commands) ValidateTablesAndColumns(config FieldsMap, pg *sqlx.DB) []str
 		}
 		return results
 	}
-	log.Printf("Validation succeeded. Postgres tables look good.")
 	result := fmt.Sprintln("Validation succeeded. Postgres tables look good.")
 	results = append(results, result)
 
