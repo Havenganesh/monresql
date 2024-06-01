@@ -10,17 +10,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// LoadFieldsMap receive the file as json string and return FieldsMap
-// please refer the moresql config file structure
-func LoadFieldsMap(jsonString string) (fieldsMap, error) {
-	config, err := jsonToFieldsMap(jsonString)
-	if err != nil {
-		fmt.Printf("Error While Validation : %s", err)
-		return config, err
-	}
-	return config, nil
-}
-
 func jsonToFieldsMap(s string) (fieldsMap, error) {
 	config := fieldsMap{}
 	var configDelayed configDelayed

@@ -518,26 +518,3 @@ func opTimestampWrapper(f func() time.Time, ago time.Duration) func(*mongo.Clien
 		return ts, err
 	}
 }
-
-func Sync(fieldMap fieldsMap, pg *sqlx.DB, client *mongo.Client, syncName string) {
-	service := newsyncronizer(fieldMap, pg, client, syncName)
-	service.serve()
-	runService[syncName] = service
-}
-
-func Stop(syncName string) {
-	service := runService[syncName]
-	service.stop()
-	runService[syncName] = nil
-	ctxCancelFuncMap[syncName] = nil
-}
-
-func ValidatePostgresTable(fieldMap fieldsMap, pg *sqlx.DB) string {
-	cmd := commands{}
-	rsult := cmd.ValidateTablesAndColumns(fieldMap, pg)
-	result := ""
-	for _, str := range rsult {
-		result = result + str
-	}
-	return result
-}

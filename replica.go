@@ -135,19 +135,3 @@ func newReplicater(config fieldsMap, pg *sqlx.DB, mongo *mongo.Client, replicaNa
 	sync := replica{config, pg, mongo, c, done, insertCounter, readCounter}
 	return sync
 }
-
-func Replicate(config fieldsMap, pg *sqlx.DB, mongo *mongo.Client, replicaName string) string {
-	var wg1 sync.WaitGroup
-	sync1 := newReplicater(config, pg, mongo, replicaName)
-	t := time.Now()
-	wg1.Add(2)
-	log.Println("Starting writer : " + replicaName)
-	go sync1.Write(&wg1)
-	log.Println("Starting reader : " + replicaName)
-	go sync1.Read(&wg1)
-	wg1.Wait()
-	log.Info("===============================Full Sync Completed For : ", replicaName, " Duration : ", time.Since(t))
-	defer pg.Close()
-	defer mongo.Disconnect(context.Background())
-	return "Replication Completed"
-}
