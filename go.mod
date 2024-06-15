@@ -3,7 +3,6 @@ module github.com/Havenganesh/monresql
 go 1.22.0
 
 require (
-	github.com/heroku/rollrus v0.2.0
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/paulbellamy/ratecounter v0.2.0
@@ -11,7 +10,6 @@ require (
 	github.com/serialx/hashring v0.0.0-20200727003509-22c0c7ab6b1b
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/viper v1.18.2
-	github.com/thejerf/suture v4.0.5+incompatible
 	github.com/tidwall/gjson v1.17.1
 	go.mongodb.org/mongo-driver v1.15.0
 )
@@ -26,7 +24,6 @@ require (
 	github.com/montanaflynn/stats v0.0.0-20171201202039-1bf9dbcd8cbe // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/rollbar/rollbar-go v1.0.2 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect

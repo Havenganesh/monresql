@@ -11,19 +11,6 @@ type dbResult struct {
 	Data       map[string]interface{}
 }
 
-type mongoResult struct {
-	DB struct {
-		Source      string
-		Destination string
-	}
-	Data map[string]interface{}
-}
-
-type urls struct {
-	mongo    string
-	postgres string
-}
-
 type columnResult struct {
 	Name string `db:"column_name"`
 }
@@ -54,12 +41,12 @@ func (h *hasUniqueIndex) isValid() bool {
 	return h.Value > 0
 }
 
-type Mongo struct {
+type mongoDB struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
 }
 
-type Postgres struct {
+type postgresDB struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
 }
@@ -67,18 +54,17 @@ type Postgres struct {
 // nameQuoted is required for postgres table names
 // and field names in case they conflict with SQL
 // builtin functions
-func (p Postgres) nameQuoted() string {
+func (p postgresDB) nameQuoted() string {
 	return fmt.Sprintf(`"%s"`, p.Name)
 }
 
 type field struct {
-	Mongo    Mongo    `json:"mongo"`
-	Postgres Postgres `json:"postgres"`
+	Mongo    mongoDB    `json:"mongo"`
+	Postgres postgresDB `json:"postgres"`
 }
 type (
-	fields         map[string]field
-	fieldShorthand map[string]string
-	fieldsWrapper  map[string]json.RawMessage
+	fields        map[string]field
+	fieldsWrapper map[string]json.RawMessage
 )
 
 type coll struct {

@@ -51,8 +51,8 @@ func jsonToFields(s string) (fields, error) {
 		} else if err := json.Unmarshal(v, &str); err == nil {
 			// Convert shorthand to longhand Field
 			f := field{
-				Mongo{k, str},
-				Postgres{normalizeDotNotationToPostgresNaming(k), mongoToPostgresTypeConversion(str)},
+				mongoDB{k, str},
+				postgresDB{normalizeDotNotationToPostgresNaming(k), mongoToPostgresTypeConversion(str)},
 			}
 			result[k] = f
 		} else {

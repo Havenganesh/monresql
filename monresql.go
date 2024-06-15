@@ -13,6 +13,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+type syncStop func()
+
 // LoadFieldsMap receive the file as json string and return FieldsMap
 // please refer the moresql config file structure
 func LoadFieldsMap(jsonString string) (fieldsMap, error) {
@@ -70,15 +72,8 @@ func Replicate(config fieldsMap, pg *sqlx.DB, mongo *mongo.Client, replicaName s
 	return "Replication Completed"
 }
 
-func Sync(fieldMap fieldsMap, pg *sqlx.DB, client *mongo.Client, syncName string) {
+func Sync(fieldMap fieldsMap, pg *sqlx.DB, client *mongo.Client, syncName string) syncStop {
 	service := newsyncronizer(fieldMap, pg, client, syncName)
-	service.serve()
-	runService[syncName] = service
-}
-
-func Stop(syncName string) {
-	service := runService[syncName]
-	service.stop()
-	runService[syncName] = nil
-	ctxCancelFuncMap[syncName] = nil
+	go service.serve()
+	return service.stop
 }

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"expvar"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +35,7 @@ type syncronizer struct {
 	psqluserName string
 	fieldMap     fieldsMap
 	setting      settings
+	ctxCancel    context.CancelFunc
 }
 type settings struct {
 	replayDuration time.Duration
@@ -43,29 +43,21 @@ type settings struct {
 	checkpoint     bool
 }
 
-var (
-	runService       map[string]*syncronizer
-	ctxCancelFuncMap map[string]context.CancelFunc
-)
-
 // Serve is the func necessary to start action
 // when using Suture library
 func (t *syncronizer) serve() {
 	ctx, cancel := context.WithCancel(context.Background())
-	ctxCancelFuncMap[t.syncName] = cancel
+	t.ctxCancel = cancel
 	t.write(ctx)
 	t.read(ctx)
 	t.report(ctx)
 	t.checkpoints(ctx)
-
 	<-t.stopC
 }
 
 // Stop is the func necessary to terminate action
-// when using Suture library
 func (t *syncronizer) stop() {
-	cancel := ctxCancelFuncMap[t.syncName]
-	cancel()
+	t.ctxCancel()
 	t.pg.Close()
 	t.mgoClient.Disconnect(context.Background())
 	t.stopC <- true
@@ -75,24 +67,6 @@ func (t *syncronizer) startOverflowConsumers(c <-chan *gtm.Op, ctx context.Conte
 	for i := 1; i <= workerCountOverflow; i++ {
 		go t.consumer(c, nil, ctx)
 	}
-}
-
-func (t *syncronizer) opFilter(op *gtm.Op) bool {
-	val := op.Data["_id"]
-	log.Println("op values : ", op.Operation, op.Namespace)
-	if val != nil {
-		log.Println("this is check for validation : ", val)
-		valkind := reflect.ValueOf(val).Kind().String()
-		if valkind == "string" {
-			no, err := strconv.Atoi(val.(string))
-			if err != nil {
-				log.Println("this is the error : ", err)
-			} else if no%2 == 0 {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func (t *syncronizer) newFan() map[string]gtm.OpChan {
@@ -137,7 +111,6 @@ func (t *syncronizer) startDedicatedConsumers(fan map[string]gtm.OpChan, overflo
 			keys = append(keys, k)
 		}
 		ring := hashring.New(keys)
-		// wg.Add(1)
 		go consistentBroker(c, ring, workerPool, ctx)
 		for _, workerChan := range workerPool {
 			go t.consumer(workerChan, overflow, ctx)
@@ -223,11 +196,11 @@ func (t *syncronizer) read(ctx context.Context) {
 					}
 				} else {
 					log.Printf("Exiting: Mongo tailer returned error %s", err.Error())
-					if t.retryCount == 0 {
-						Stop(t.syncName)
-					} else {
-						t.retryCount--
-					}
+					// if t.retryCount == 0 {
+					// 	Stop(t.syncName)
+					// } else {
+					// 	t.retryCount--
+					// }
 				}
 			case op := <-g.ops:
 				t.counters.read.Incr(1)
@@ -267,8 +240,8 @@ func (t *syncronizer) write(ctx context.Context) {
 }
 
 func (t *syncronizer) report(ctx context.Context) {
-	reportPoint := viper.GetInt64("reportPointPeriod")
-	reportPointFrequency := time.Duration(reportPoint) * time.Second
+
+	reportPointFrequency := time.Duration(2) * time.Second
 	// log.Println("report point period : ", reportPointFrequency)
 	tiker := time.NewTicker(reportPointFrequency)
 	go func() {
@@ -412,14 +385,6 @@ func (t *syncronizer) ReportCounters() {
 	}
 }
 
-func (t *syncronizer) msLag(epoch int32, nowFunc func() time.Time) int64 {
-	// TODO: use time.Duration instead of this malarky
-	ts := time.Unix(int64(epoch), 0)
-	d := nowFunc().Sub(ts)
-	nanoToMillisecond := func(t time.Duration) int64 { return t.Nanoseconds() / 1e6 }
-	return nanoToMillisecond(d)
-}
-
 type monresqlMetadata struct {
 	AppName     string    `db:"app_name"`
 	LastEpoch   int64     `db:"last_epoch"`
@@ -518,3 +483,29 @@ func opTimestampWrapper(f func() time.Time, ago time.Duration) func(*mongo.Clien
 		return ts, err
 	}
 }
+
+// func (t *syncronizer) opFilter(op *gtm.Op) bool {
+// 	val := op.Data["_id"]
+// 	log.Println("op values : ", op.Operation, op.Namespace)
+// 	if val != nil {
+// 		log.Println("this is check for validation : ", val)
+// 		valkind := reflect.ValueOf(val).Kind().String()
+// 		if valkind == "string" {
+// 			no, err := strconv.Atoi(val.(string))
+// 			if err != nil {
+// 				log.Println("this is the error : ", err)
+// 			} else if no%2 == 0 {
+// 				return true
+// 			}
+// 		}
+// 	}
+// 	return false
+// }
+
+// func (t *syncronizer) msLag(epoch int32, nowFunc func() time.Time) int64 {
+// 	// TODO: use time.Duration instead of this malarky
+// 	ts := time.Unix(int64(epoch), 0)
+// 	d := nowFunc().Sub(ts)
+// 	nanoToMillisecond := func(t time.Duration) int64 { return t.Nanoseconds() / 1e6 }
+// 	return nanoToMillisecond(d)
+// }
