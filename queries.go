@@ -1,16 +1,16 @@
 package monresql
 
-// Queries contains the sql commands used by Moresql
+// Queries contains the sql commands used by Monresql
 type queries struct{}
 
 // GetMetadata fetches the most recent metadata row for this appname
 func (q *queries) GetMetadata() string {
-	return `SELECT * FROM moresql_metadata WHERE app_name=$1 ORDER BY last_epoch DESC LIMIT 1;`
+	return `SELECT * FROM monresql_metadata WHERE app_name=$1 ORDER BY last_epoch DESC LIMIT 1;`
 }
 
 // SaveMetadata performs an upsert using metadata with uniqueness constraint on app_name
 func (q *queries) SaveMetadata() string {
-	return `INSERT INTO "moresql_metadata" ("app_name", "last_epoch", "processed_at")
+	return `INSERT INTO "monresql_metadata" ("app_name", "last_epoch", "processed_at")
 VALUES (:app_name, :last_epoch, :processed_at)
 ON CONFLICT ("app_name")
 DO UPDATE SET "last_epoch" = :last_epoch, "processed_at" = :processed_at;`
@@ -19,23 +19,23 @@ DO UPDATE SET "last_epoch" = :last_epoch, "processed_at" = :processed_at;`
 // CreateMetadataTable provides the sql required to setup the metadata table
 func (q *queries) CreateMetadataTable() string {
 	return `
--- create the moresql_metadata table for checkpoint persistance
-CREATE TABLE public.moresql_metadata
+-- create the monresql_metadata table for checkpoint persistance
+CREATE TABLE public.monresql_metadata
 (
     app_name TEXT NOT NULL,
     last_epoch INT NOT NULL,
     processed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 );
 -- Setup mandatory unique index
-CREATE UNIQUE INDEX moresql_metadata_app_name_uindex ON public.moresql_metadata (app_name);
+CREATE UNIQUE INDEX monresql_metadata_app_name_uindex ON public.monresql_metadata (app_name);
 
 -- Grant permissions to this user, replace username with moresql's user
-GRANT SELECT, UPDATE, DELETE ON TABLE public.moresql_metadata TO $USERNAME;
+GRANT SELECT, UPDATE, DELETE ON TABLE public.monresql_metadata TO $USERNAME;
 
-COMMENT ON COLUMN public.moresql_metadata.app_name IS 'Name of application. Used for circumstances where multiple apps stream to same PG instance.';
-COMMENT ON COLUMN public.moresql_metadata.last_epoch IS 'Most recent epoch processed from Mongo';
-COMMENT ON COLUMN public.moresql_metadata.processed_at IS 'Timestamp for when the last epoch was processed at';
-COMMENT ON TABLE public.moresql_metadata IS 'Stores checkpoint data for MoreSQL (mongo->pg) streaming';
+COMMENT ON COLUMN public.monresql_metadata.app_name IS 'Name of application. Used for circumstances where multiple apps stream to same PG instance.';
+COMMENT ON COLUMN public.monresql_metadata.last_epoch IS 'Most recent epoch processed from Mongo';
+COMMENT ON COLUMN public.monresql_metadata.processed_at IS 'Timestamp for when the last epoch was processed at';
+COMMENT ON TABLE public.monresql_metadata IS 'Stores checkpoint data for Monresql (mongo->pg) streaming';
 `
 }
 

@@ -72,8 +72,11 @@ func Replicate(config fieldsMap, pg *sqlx.DB, mongo *mongo.Client, replicaName s
 	return "Replication Completed"
 }
 
-func Sync(fieldMap fieldsMap, pg *sqlx.DB, client *mongo.Client, syncName string) syncStop {
-	service := newsyncronizer(fieldMap, pg, client, syncName)
+func Sync(fieldMap fieldsMap, pg *sqlx.DB, client *mongo.Client, syncName string, syncOption *syncOptions) syncStop {
+	if syncOption == nil {
+		panic("syncOption not nil")
+	}
+	service := newsyncronizer(fieldMap, pg, client, syncName, syncOption)
 	go service.serve()
 	return service.stop
 }

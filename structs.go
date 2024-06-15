@@ -96,7 +96,7 @@ type (
 )
 
 // Mapfile provides the core struct for
-// the ultimate unmarshalled moresql.json
+// the ultimate unmarshalled monresql.json
 type fieldsMap map[string]dB
 
 // ConfigDelayed provides lazy config loading

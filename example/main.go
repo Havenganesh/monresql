@@ -39,10 +39,14 @@ func main() {
 	}
 	//replicate the data from mongo to postgresql
 	// monresql.Replicate(dMap, pq, clint, "students")
-	stop := monresql.Sync(dMap, pq, clint, "students")
-
-	time.Sleep(time.Minute * 2)
+	option := monresql.NewSyncOptions()
+	option.SetCheckPointPeriod(time.Second * 5)
+	stop := monresql.Sync(dMap, pq, clint, "students", option)
+	fmt.Println("sync called after")
+	time.Sleep(time.Minute * 1)
+	fmt.Println("waited end")
 	stop()
+	time.Sleep(time.Minute * 10)
 
 }
 

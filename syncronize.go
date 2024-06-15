@@ -15,7 +15,6 @@ import (
 	"github.com/rwynn/gtm/v2"
 	"github.com/serialx/hashring"
 	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -31,21 +30,42 @@ type syncronizer struct {
 	stopC        chan bool
 	fan          map[string]gtm.OpChan
 	checkpoint   *cmap.ConcurrentMap
-	retryCount   int
 	psqluserName string
 	fieldMap     fieldsMap
-	setting      settings
+	setting      *syncOptions
 	ctxCancel    context.CancelFunc
 }
-type settings struct {
-	replayDuration time.Duration
-	replaySecond   int64
-	checkpoint     bool
+
+type syncOptions struct {
+	checkpoint       bool
+	checkPointPeriod time.Duration
+	lastEpoch        int64
+	reportPeriod     time.Duration
+}
+
+func NewSyncOptions() *syncOptions {
+	return &syncOptions{checkpoint: true, checkPointPeriod: time.Minute * 1, lastEpoch: 0, reportPeriod: time.Minute * 1}
+}
+
+func (s *syncOptions) SetCheckPoint(checkpoint bool) {
+	s.checkpoint = checkpoint
+}
+
+func (s *syncOptions) SetCheckPointPeriod(duration time.Duration) {
+	s.checkPointPeriod = duration
+}
+
+func (s *syncOptions) SetLastEpoch(timeInEpoch int64) {
+	s.lastEpoch = timeInEpoch
+}
+func (s *syncOptions) SetReportPeriod(duration time.Duration) {
+	s.reportPeriod = duration
 }
 
 // Serve is the func necessary to start action
 // when using Suture library
 func (t *syncronizer) serve() {
+	fmt.Println("sync serve called")
 	ctx, cancel := context.WithCancel(context.Background())
 	t.ctxCancel = cancel
 	t.write(ctx)
@@ -57,6 +77,7 @@ func (t *syncronizer) serve() {
 
 // Stop is the func necessary to terminate action
 func (t *syncronizer) stop() {
+	fmt.Println("stop called........................")
 	t.ctxCancel()
 	t.pg.Close()
 	t.mgoClient.Disconnect(context.Background())
@@ -157,12 +178,12 @@ func (t *syncronizer) read(ctx context.Context) {
 	metadata := fetchMetadata(t.pg, t.syncName, t.psqluserName)
 
 	var lastEpoch int64
-	if t.setting.replaySecond != 0 {
-		lastEpoch = int64(t.setting.replaySecond)
+	if t.setting.lastEpoch != 0 {
+		lastEpoch = t.setting.lastEpoch
 	} else {
 		lastEpoch = metadata.LastEpoch
 	}
-	options, err := t.newOptions(epochTimestamp(metadata.LastEpoch), t.setting.replayDuration)
+	options, err := t.newOptions(epochTimestamp(lastEpoch), 0)
 	if err != nil {
 		log.Println(err.Error())
 	}
@@ -185,7 +206,7 @@ func (t *syncronizer) read(ctx context.Context) {
 					if ok && latest != nil {
 						metadata = latest.(monresqlMetadata)
 						lastEpoch = metadata.LastEpoch
-						options, err := t.newOptions(epochTimestamp(lastEpoch), t.setting.replayDuration)
+						options, err := t.newOptions(epochTimestamp(lastEpoch), 0)
 						if err != nil {
 							log.Println(err.Error())
 						}
@@ -240,10 +261,8 @@ func (t *syncronizer) write(ctx context.Context) {
 }
 
 func (t *syncronizer) report(ctx context.Context) {
-
-	reportPointFrequency := time.Duration(2) * time.Second
 	// log.Println("report point period : ", reportPointFrequency)
-	tiker := time.NewTicker(reportPointFrequency)
+	tiker := time.NewTicker(t.setting.reportPeriod)
 	go func() {
 		for {
 			select {
@@ -268,10 +287,8 @@ func (t *syncronizer) saveCheckpoint(m monresqlMetadata) error {
 
 func (t *syncronizer) checkpoints(ctx context.Context) {
 	go func() {
-		checkPointPeriod := viper.GetInt64("checkPointPeriod")
-		checkpointFrequency := time.Duration(checkPointPeriod) * time.Second
 		// log.Println("this is checkpoint frequency ", checkpointFrequency, "for this tailname : ", t.tailName)
-		timer := time.NewTicker(checkpointFrequency)
+		timer := time.NewTicker(t.setting.checkPointPeriod)
 		var epoch int64 = 0
 		for {
 			select {
@@ -308,7 +325,7 @@ func (t *syncronizer) consumer(in <-chan *gtm.Op, overflow chan<- *gtm.Op, ctx c
 		case op := <-in:
 			t.processOp(op)
 			if t.setting.checkpoint {
-				t.checkpoint.Set(t.syncName, t.opToMoresqlMetadata(op))
+				t.checkpoint.Set(t.syncName, t.opTomonresqlMetadata(op))
 			}
 		case <-ctx.Done():
 			return
@@ -316,7 +333,7 @@ func (t *syncronizer) consumer(in <-chan *gtm.Op, overflow chan<- *gtm.Op, ctx c
 	}
 }
 
-func (t *syncronizer) opToMoresqlMetadata(op *gtm.Op) monresqlMetadata {
+func (t *syncronizer) opTomonresqlMetadata(op *gtm.Op) monresqlMetadata {
 	ts, _ := gtm.ParseTimestamp(op.Timestamp)
 	return monresqlMetadata{AppName: t.syncName, ProcessedAt: time.Now(), LastEpoch: int64(ts)}
 }
@@ -349,7 +366,6 @@ func (t *syncronizer) processOp(op *gtm.Op) {
 		op.Data = t.getMongoDocById(op.Id)
 	}
 	data := sanitizeData(c.Fields, op)
-
 	switch {
 	case op.IsInsert():
 		t.counters.insert.Incr(1)
@@ -391,7 +407,7 @@ type monresqlMetadata struct {
 	ProcessedAt time.Time `db:"processed_at"`
 }
 
-func newsyncronizer(fieldMap fieldsMap, pg *sqlx.DB, client *mongo.Client, syncName string) *syncronizer {
+func newsyncronizer(fieldMap fieldsMap, pg *sqlx.DB, client *mongo.Client, syncName string, syncOptions *syncOptions) *syncronizer {
 	checkpoint := cmap.New()
 	return &syncronizer{
 		fieldMap:     fieldMap,
@@ -401,14 +417,20 @@ func newsyncronizer(fieldMap fieldsMap, pg *sqlx.DB, client *mongo.Client, syncN
 		counters:     buildCounters(syncName),
 		checkpoint:   &checkpoint,
 		syncName:     syncName,
-		retryCount:   viper.GetInt("retryCount"),
-		psqluserName: ""}
+		setting:      syncOptions,
+		psqluserName: getPqUserName(pg)}
 }
 
-func fetchMetadata(pg *sqlx.DB, appName, username string) monresqlMetadata {
+func getPqUserName(pg *sqlx.DB) string {
+	var username string
+	pg.QueryRow("SELECT current_user").Scan(&username)
+	return username
+}
+
+func fetchMetadata(pg *sqlx.DB, syncName, username string) monresqlMetadata {
 	metadata := monresqlMetadata{}
 	q := queries{}
-	err := pg.Get(&metadata, q.GetMetadata(), appName)
+	err := pg.Get(&metadata, q.GetMetadata(), syncName)
 	// No rows means this is first time with table
 	if err != nil && err != sql.ErrNoRows {
 		log.Printf("Error while reading moresql_metadata table %+v", err)
@@ -418,7 +440,7 @@ func fetchMetadata(pg *sqlx.DB, appName, username string) monresqlMetadata {
 		log.Println("Executed Query : ", query)
 		_, err := pg.DB.Exec(query1)
 		if err != nil {
-			log.Println("MetaTable Crreating Error : ", err)
+			log.Println("MetaTable Creating Error : ", err)
 		} else {
 			log.Println("table created Sucessfuly")
 		}
