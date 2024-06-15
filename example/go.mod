@@ -4,7 +4,10 @@ go 1.22.0
 
 replace github.com/Havenganesh/monresql => ../../monresql
 
-require github.com/Havenganesh/monresql v0.0.0-00010101000000-000000000000
+require (
+	github.com/Havenganesh/monresql v0.0.0-00010101000000-000000000000
+	github.com/lib/pq v1.10.9
+)
 
 require (
 	// github.com/Havenganesh/monresql v0.1.1 // indirect

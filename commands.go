@@ -70,28 +70,25 @@ func (c *commands) ValidateTablesAndColumns(fieldMap fieldsMap, pg *sqlx.DB) []s
 		}
 	}
 	if len(missingColumns) != 0 {
-		log.Print("The following errors were reported:")
+		// log.Print("The following errors were reported:")
 		tables := make(map[string]tableColumn)
 		for _, v := range missingColumns {
-			log.Printf("Table %s.%s Column: %s, Error: %s", v.Schema, v.Table, v.Column, v.Message)
+			// log.Printf("Table %s.%s Column: %s, Error: %s", v.Schema, v.Table, v.Column, v.Message)
 			tables[v.Table] = v
 		}
-		log.Println("SQL Output to assist with correcting table schema malformation:")
+		// log.Println("SQL Output to assist with correcting table schema malformation:")
 		for _, v := range tables {
-			fmt.Printf("CREATE TABLE IF NOT EXISTS %s.%s();\n", v.Schema, v.Table)
+			// fmt.Printf("CREATE TABLE IF NOT EXISTS %s.%s();\n", v.Schema, v.Table)
 			Serr := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s.%s();\n", v.Schema, v.Table)
 			results = append(results, Serr)
 		}
 		// Column level advice
 		for _, v := range missingColumns {
-			fmt.Printf("%s\n", v.Solution)
+			// fmt.Printf("%s\n", v.Solution)
 			Serr := fmt.Sprintf("%s\n", v.Solution)
 			results = append(results, Serr)
 		}
 		return results
 	}
-	result := fmt.Sprintln("Validation succeeded. Postgres tables look good.")
-	results = append(results, result)
-
 	return results
 }

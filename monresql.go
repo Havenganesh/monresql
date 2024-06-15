@@ -2,7 +2,9 @@ package monresql
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,15 +24,35 @@ func LoadFieldsMap(jsonString string) (fieldsMap, error) {
 	return config, nil
 }
 
-func ValidatePostgresTable(fieldMap fieldsMap, pg *sqlx.DB) string {
+func ValidateOrCreatePostgresTable(fieldMap fieldsMap, pg *sqlx.DB) (string, error) {
 	cmd := commands{}
 	rsult := cmd.ValidateTablesAndColumns(fieldMap, pg)
-	result := ""
-	for _, str := range rsult {
-		result = result + str
+	query := strings.Join(rsult, "")
+	if len(rsult) > 0 {
+		_, err := pg.DB.Exec(query)
+		if err != nil {
+			fmt.Println("Table Creation Error ", err)
+			if strings.Contains(err.Error(), "already exists") {
+				return query, errors.New("all Postgres fields must be in lower case \n to resolve that use complex structure\n" + COMPLEX)
+			}
+			return query, errors.New(err.Error())
+		} else {
+			fmt.Println("Table Creation Done.")
+			rsult := cmd.ValidateTablesAndColumns(fieldMap, pg)
+			if len(rsult) > 0 {
+				query := strings.Join(rsult, "")
+				return query, errors.New("all Postgres fields must be in lower case \n to resolve that use complex structure\n" + COMPLEX)
+			}
+		}
 	}
-	return result
+	fmt.Println("Table Validation Success.")
+	return "", nil
 }
+
+const COMPLEX string = `"fieldName": {
+		"Postgres": {"Name": "field_name","Type": "JSONB"},
+		"Mongo": {"Name": "fieldName","Type": "object"}
+	      }`
 
 func Replicate(config fieldsMap, pg *sqlx.DB, mongo *mongo.Client, replicaName string) string {
 	var wg1 sync.WaitGroup

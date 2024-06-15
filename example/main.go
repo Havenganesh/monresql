@@ -1,40 +1,73 @@
 package main
 
-import "github.com/Havenganesh/monresql"
+import (
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/jmoiron/sqlx"
+
+	"github.com/Havenganesh/monresql"
+	_ "github.com/lib/pq"
+)
 
 func main() {
-	monresql.LoadFieldsMap("")
+	dMap, err := monresql.LoadFieldsMap(jsonF)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	pq := getPostgresConn("postgres://postgres:Success97@localhost:5432/monresql")
+	if pq == nil {
+		os.Exit(1)
+	}
+	_, err = monresql.ValidateOrCreatePostgresTable(dMap, pq)
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println("Validation Success, Table looks good")
+	}
+
+	defer pq.Close()
+}
+
+func getPostgresConn(url string) *sqlx.DB {
+	db, err := sqlx.Connect("postgres", url)
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+
+	// Ping the database to verify the connection.
+	err = db.Ping()
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+	return db
 }
 
 var jsonF string = `{
-	"acme_project": {
+	"monresql": {
 	  "collections": {
-		"Authors": {
-		  "name": "Authors",
-		  "pg_table": "authors",
+		"students": {
+		  "name": "students",
+		  "pg_table": "students",
 		  "fields": {
 			"_id": "TEXT",
-			"addresses": "JSONB",
-			"books": "JSONB",
-			"books.#.product_id": {
-			  "Postgres": {"Name": "book_ids","Type": "JSONB"},
-			  "Mongo": {"Name": "books.#.product_id","Type": "object"}
-			}
-		  }
-		},
-		"Users": {
-		  "name": "Users",
-		  "pg_table": "users",
-		  "fields": {
-			"_id": "TEXT",
-			"email": "TEXT",
 			"name": "TEXT",
-			"preferences": "JSONB",
-			"preferences.unsubscribe": {
-			  "Postgres": {"Name": "is_unsubscribed", "Type": "BOOLEAN"},
-			  "Mongo": {"Name": "preferences.unsubscribe", "Type": "object"}
+			"age": "INTEGER",
+			"rollNumber":{
+			"Postgres": {"Name": "rollnumber","Type": "INTEGER"},
+			"Mongo": {"Name": "rollNumber","Type": "INTEGER"}
 			},
-			"createdAt": "TIMESTAMP WITH TIME ZONE"
+			"dob" : "TIMESTAMP",
+			"subjects" : "TEXT[]",
+			"class" : "TEXT",
+			"markList": {
+			  "Postgres": {"Name": "marklist","Type": "JSONB"},
+			  "Mongo": {"Name": "markList","Type": "object"}
+			}
 		  }
 		}
 	  }
