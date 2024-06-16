@@ -1,4 +1,6 @@
-# Monresql: MongoDB to PostgreSQL Data Pipeline Tool Library A Go Library for Building Data Pipelines from MongoDB (including MongoDB 6) to PostgreSQL
+# Monresql: MongoDB to PostgreSQL Data Pipeline Tool Library
+
+# A Go Library for Building Data Pipelines from MongoDB (including MongoDB 6) to PostgreSQL
 
 ## Overview
 
