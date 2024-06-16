@@ -37,8 +37,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	//replicate the data from mongo to postgresql
-	// monresql.Replicate(dMap, pq, clint, "students")
+	monresql.Replicate(dMap, pq, clint, "students")
 	option := monresql.NewSyncOptions()
 	option.SetCheckPointPeriod(time.Second * 5)
 	stop := monresql.Sync(dMap, pq, clint, "students", option)
