@@ -20,6 +20,37 @@
  * SOFTWARE.
  */
 
+/*
+	Monresql: MongoDB to PostgreSQL Data Pipeline Tool
+
+Overview
+Monresql is a specialized library designed to facilitate efficient data replication, transfer, and synchronization from MongoDB to PostgreSQL databases. Inspired by similar tools like Moresql, Monresql focuses on unidirectional data movement, ensuring seamless integration and synchronization between MongoDB documents and PostgreSQL tables.
+
+Key Features
+Data Replication: Efficiently replicate data from MongoDB collections to corresponding PostgreSQL tables.
+
+Incremental Updates: Support for incremental updates to keep PostgreSQL data up-to-date without full data reloads.
+
+Performance Optimization: Optimizes data transfer processes for minimal latency and optimal resource utilization.
+
+API Reference
+LoadFieldsMap()
+Loads a mapping file to define how MongoDB documents should be mapped to PostgreSQL tables.
+
+ValidateOrCreatePostgresTable()
+Validates the existence of a PostgreSQL table to ensure it's ready for data replication.
+
+Replicate()
+Initiates the data replication process from MongoDB to PostgreSQL based on the loaded mapping.
+
+Sync()
+Starts the synchronization process, ensuring that changes in MongoDB are reflected in PostgreSQL in real-time and also save the marker to sync from the last stopped mark if the service stopped
+
+NewSyncOptions()
+NewSyncOptions will return the pointer of the syncoptions struct with default values of
+
+&syncOptions{checkpoint: true, checkPointPeriod: time.Minute * 1, lastEpoch: 0, reportPeriod: time.Minute * 1} then you can edit and change the values by set methods
+*/
 package monresql
 
 import (
@@ -48,6 +79,10 @@ func LoadFieldsMap(jsonString string) (fieldsMap, error) {
 	return config, nil
 }
 
+// ValidateOrCreatePostgresTable validates the postgres table fileds against the jsonfile, if table not
+// exists and it is a valid file it creates postgres table,
+// but you must create the Database yourself, always use the small letters in the postgres fields name
+// please refer the complex structure
 func ValidateOrCreatePostgresTable(fieldMap fieldsMap, pg *sqlx.DB) (string, error) {
 	cmd := commands{}
 	rsult := cmd.ValidateTablesAndColumns(fieldMap, pg)
@@ -78,6 +113,8 @@ const COMPLEX string = `"fieldName": {
 		"Mongo": {"Name": "fieldName","Type": "object"}
 	      }`
 
+// if the table is validated you can start the replication using this method
+// please find sample  code in the example
 func Replicate(config fieldsMap, pg *sqlx.DB, mongo *mongo.Client, replicaName string) string {
 	var wg1 sync.WaitGroup
 	sync1 := newReplicater(config, pg, mongo, replicaName)
@@ -94,6 +131,9 @@ func Replicate(config fieldsMap, pg *sqlx.DB, mongo *mongo.Client, replicaName s
 	return "Replication Completed"
 }
 
+// if the table is validated you can start the sync using this method
+// and it return a stop function, by using that method you can stop sync anytime
+// please find sample  code in the example
 func Sync(fieldMap fieldsMap, pg *sqlx.DB, client *mongo.Client, syncName string, syncOption *syncOptions) syncStop {
 	if syncOption == nil {
 		panic("syncOption not nil")

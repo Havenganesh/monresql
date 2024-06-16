@@ -65,6 +65,13 @@ type syncOptions struct {
 	reportPeriod     time.Duration
 }
 
+// NewSyncOptions method return the pointer of syncOptions with default values of
+// {checkpoint: true, checkPointPeriod: time.Minute * 1, lastEpoch: 0, reportPeriod: time.Minute * 1}
+// NewSyncOptions give you fucntion to set few options
+// SetCheckPoint() if the checkpoint is true it will save the marker in monresql_metada as time epoch
+// SetCheckPointPeriod() the marker saving period interval
+// SetLastEpoch() if you want run the sync from the known epoch time you can use this method and restart the service
+// SetReportPeriod() it log out the read and write counts in the console
 func NewSyncOptions() *syncOptions {
 	return &syncOptions{checkpoint: true, checkPointPeriod: time.Minute * 1, lastEpoch: 0, reportPeriod: time.Minute * 1}
 }
